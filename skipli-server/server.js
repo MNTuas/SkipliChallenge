@@ -1,3 +1,4 @@
+// 
 const express = require('express');
 const app = express();
 const cors = require('cors');
@@ -76,7 +77,7 @@ app.post('/ValidateAccessCode', async (req, res) => {
       return res.status(400).json({ error: 'Missing phoneNumber or accessCode' });
     }
 
-    // Lấy user từ Firestore
+   
     const userRef = db.collection('users').doc(phoneNumber);
     const userDoc = await userRef.get();
 
@@ -100,36 +101,50 @@ app.post('/ValidateAccessCode', async (req, res) => {
 });
 
 app.get('/searchGithubUsers', async (req, res) => {
-  const { q, page = 1, per_page = 10 } = req.query;
+  const { q, page = 1, per_page = 10, phone_number } = req.query;
 
-  if (!q) {
-    return res.status(400).json({ error: 'Missing search query (q)' });
+  if (!q || !phone_number) {
+    return res.status(400).json({ error: 'Missing query or phone_number' });
   }
 
   try {
+    
     const githubRes = await axios.get('https://api.github.com/search/users', {
       params: { q, per_page, page },
       headers: {
         'User-Agent': 'SkipliApp',
         'Accept': 'application/vnd.github.v3+json',
-        // Optional: auth
-        // 'Authorization': `token ${process.env.GITHUB_TOKEN}`
       }
     });
 
-    const users = githubRes.data.items.map(u => ({
+    const githubUsers = githubRes.data.items;
+
+    
+    const snapshot = await db
+      .collection('favorite_github_users')
+      .where('phoneNumber', '==', phone_number)
+      .get();
+
+    const likedIds = [];
+    snapshot.forEach(doc => {
+      likedIds.push(doc.data().githubUserId);
+    });
+
+    
+    const users = githubUsers.map(u => ({
       id: u.id,
       login: u.login,
       avatar_url: u.avatar_url,
       html_url: u.html_url,
       followers_url: u.followers_url,
       repos_url: u.repos_url,
+      isLike: likedIds.includes(Number(u.id)),
     }));
 
     res.json(users);
   } catch (err) {
-    console.error('GitHub error:', err.response?.data || err.message);
-    res.status(500).json({ error: 'GitHub API failed' });
+    console.error('GitHub error:', err.message);
+    res.status(500).json({ error: 'Something went wrong' });
   }
 });
 
@@ -208,7 +223,7 @@ app.get('/getUserProfile', async (req, res) => {
   }
 
   try {
-    // 1. Lấy danh sách githubUserId user đã like
+    
     const snapshot = await db.collection('favorite_github_users')
       .where('phoneNumber', '==', phoneNumber)
       .get();
@@ -219,7 +234,7 @@ app.get('/getUserProfile', async (req, res) => {
 
     const githubUserIds = snapshot.docs.map(doc => doc.data().githubUserId);
 
-    // 2. Gọi GitHub API để lấy chi tiết từng user
+    
     const githubUsers = await Promise.all(
       githubUserIds.map(async (id) => {
         try {
@@ -261,4 +276,5 @@ app.get('/getUserProfile', async (req, res) => {
 
 app.listen(8080, () => {
   console.log('Skipli Server is running on http://localhost:8080');
+  debugger;
 });
