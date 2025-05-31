@@ -6,6 +6,8 @@ const { db } = require('./firebase/firebase');
 app.use(express.json());
 require('dotenv').config();
 const axios = require('axios');
+const { sendSMS } = require('./twilioService'); 
+
 
 const corsOptions = { 
   origin: '*',
@@ -22,6 +24,20 @@ app.get('/api', (req, res) => {
   });
 });
 app.use(express.json());
+
+function formatPhoneNumber(phoneNumber) {
+  if (phoneNumber.startsWith('0')) {
+    return '+84' + phoneNumber.slice(1);
+  }
+
+  
+  if (phoneNumber.startsWith('+')) {
+    return phoneNumber;
+  }
+
+  
+  return phoneNumber;
+}
 
 
 // app.get('/test-firebase', async (req, res) => {
@@ -62,12 +78,22 @@ app.post('/CreateNewAccessCode', async (req, res) => {
       createdAt: new Date().toISOString()
     });
 
-    res.json({ accessCode, phoneNumber });
+    
+    const formattedPhone = formatPhoneNumber(phoneNumber);
+    await sendSMS(formattedPhone, `Your OTP code is: ${accessCode}`)
+
+    res.json({ 
+      success: true,
+      accessCode: accessCode,
+      phoneNumber: formattedPhone,
+      message: 'Access code sent successfully' 
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong' });
   }
 });
+
 
 app.post('/ValidateAccessCode', async (req, res) => {
   try {
@@ -189,7 +215,6 @@ app.post('/likeGithubUser', async (req, res) => {
     return res.status(400).json({ error: 'Missing phoneNumber or githubUserId' });
   }
 
-  // Kiểm tra user có tồn tại
   const userRef = db.collection('users').doc(phoneNumber);
   const userDoc = await userRef.get();
 
@@ -201,7 +226,6 @@ app.post('/likeGithubUser', async (req, res) => {
   const likeDoc = await likeRef.get();
 
   if (likeDoc.exists) {
-    // Nếu đã like → xóa (unlike)
     await likeRef.delete();
     return res.json({ success: true, message: 'User unliked successfully' });
   } else {
